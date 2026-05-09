@@ -1,0 +1,46 @@
+services:
+  bitmagnet:
+    container_name: bitmagnet
+    image: ghcr.io/bitmagnet-io/bitmagnet:v0.10.0
+    restart: unless-stopped
+    environment:
+      # Enable logging to rotating files for ingest to Loki:
+      - LOG_FILE_ROTATOR_ENABLED=true
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PASSWORD=postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command:
+      - worker
+      - run
+      - --all
+    ports:
+      - "3333:3333"
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: bitmagnet-postgres
+    volumes:
+      - postgresql-data:/var/lib/postgresql/data
+    ports:
+      - "7432:5432"
+    shm_size: 1g
+    restart: unless-stopped
+    environment:
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=bitmagnet
+      - PGUSER=postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready"]
+      interval: 10s
+      start_period: 20s
+    entrypoint: [ "/bin/bash", "-c","
+      docker-entrypoint.sh postgres &
+      until pg_isready -U postgres; do sleep 3; done &&
+      psql -U \"$PG_USER\" -d postgres -c 'CREATE DATABASE find_torrent_data;' || true &&
+      wait"
+    ]
+
+volumes:
+  postgresql-data:
