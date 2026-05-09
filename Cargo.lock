@@ -409,7 +409,6 @@ dependencies = [
  "clap",
  "crc32fast",
  "hex",
- "json_log",
  "lava_torrent",
  "log",
  "multimap",
@@ -884,17 +883,6 @@ checksum = "8c942ebf8e95485ca0d52d97da7c5a2c387d0e7f0ba4c35e93bfcaee045955b3"
 dependencies = [
  "once_cell",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "json_log"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "25b59af2d9d3b64a30b6149e3b0b5bf72651b949a96284697eed2e0e6c5a5d86"
-dependencies = [
- "log",
- "serde",
- "serde_json",
 ]
 
 [[package]]

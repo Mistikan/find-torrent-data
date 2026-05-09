@@ -12,12 +12,15 @@ use super::SearchEngine;
 
 fn connect_postgres(url: &str) -> Result<Client, Box<dyn Error>> {
     let config = Config::from_str(url)?;
+    // URIs omitting sslmode default to `prefer`. Using TLS for `prefer` fails on many local
+    // Postgres installs (broken certs); tokio-postgres uses plaintext when tls is NoTls.
     match config.get_ssl_mode() {
-        SslMode::Disable => Ok(config.connect(NoTls)?),
-        _ => {
+        SslMode::Require => {
             let tls = TlsConnector::new()?;
             Ok(config.connect(MakeTlsConnector::new(tls))?)
         }
+        SslMode::Disable | SslMode::Prefer => Ok(config.connect(NoTls)?),
+        _ => Ok(config.connect(NoTls)?),
     }
 }
 

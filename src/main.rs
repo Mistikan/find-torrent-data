@@ -18,6 +18,7 @@ use serde::Serialize;
 use sha1::{Digest, Sha1};
 use walkdir::WalkDir;
 
+mod logging;
 mod searchengine;
 use crate::searchengine::SearchEngineA;
 use searchengine::{calculate_crc32, SearchEngine};
@@ -119,7 +120,7 @@ fn get_search_engine(
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    json_log::init_from_env().unwrap();
+    logging::init_from_env().unwrap();
 
     let cli = Args::parse();
 
