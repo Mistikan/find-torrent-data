@@ -1,5 +1,26 @@
-use log::{Level, Log, Metadata, Record, SetLoggerError};
+use log::{error, Level, Log, Metadata, Record, SetLoggerError};
 use serde::Serialize;
+use std::error::Error;
+
+/// Logs `err` and every [`Error::source`] in the chain (for example tokio-postgres
+/// reports only "invalid configuration" while the cause is "password missing").
+pub fn error_chain(err: &(dyn Error + 'static)) {
+    error!("{}", err);
+    log_error_sources(err.source());
+}
+
+/// Same as [`error_chain`], but prefixes the top-level message (e.g. context + primary error).
+pub fn error_chain_with_prefix(prefix: &str, err: &(dyn Error + 'static)) {
+    error!("{}: {}", prefix, err);
+    log_error_sources(err.source());
+}
+
+fn log_error_sources(mut cur: Option<&(dyn Error + 'static)>) {
+    while let Some(e) = cur {
+        error!("caused by: {}", e);
+        cur = e.source();
+    }
+}
 
 struct JsonLogger;
 

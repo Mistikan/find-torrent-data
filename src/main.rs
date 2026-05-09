@@ -9,7 +9,7 @@ use std::vec;
 
 use clap::{Parser, Subcommand};
 use lava_torrent::torrent::v1::Torrent;
-use log::{debug, error, info, warn};
+use log::{debug, info, warn};
 use permutator::CartesianProductIterator;
 use rayon::prelude::*;
 use searchengine::filedata::FileData;
@@ -103,7 +103,7 @@ fn get_search_engine(
         SearchEngineType::FileData => {
             let mut x = FileData::new(search_engine_settings);
             if let Err(e) = x.connect() {
-                error!("{}", e);
+                logging::error_chain(e.as_ref());
                 std::process::exit(1);
             }
             return Box::new(x);
@@ -111,7 +111,7 @@ fn get_search_engine(
         SearchEngineType::Postgresql => {
             let mut x = Postgresql::new(search_engine_settings);
             if let Err(e) = x.connect() {
-                error!("{}", e);
+                logging::error_chain(e.as_ref());
                 std::process::exit(1);
             }
             return Box::new(x);
@@ -131,7 +131,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     println!("{}", torrent_file.info_hash());
                 }
                 Err(e) => {
-                    error!("Failed to read torrent: {}", e);
+                    logging::error_chain_with_prefix("Failed to read torrent", e.as_ref());
                     std::process::exit(1);
                 }
             };
@@ -146,7 +146,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             let search_engine = get_search_engine(search_engine_type, search_engine_settings);
             // , search_engine
             if let Err(e) = torrent_run(torrent, output, search_engine) {
-                error!("{}", e);
+                logging::error_chain(e.as_ref());
                 std::process::exit(1);
             }
         }
@@ -165,14 +165,18 @@ fn main() -> Result<(), Box<dyn Error>> {
                         .follow_links(follow_links)
                         .into_iter()
                         // Print and filter errors
-                        .filter_map(|entry| entry.map_err(|err| error!("{}", err)).ok())
+                        .filter_map(|entry| {
+                            entry
+                                .map_err(|err| logging::error_chain(&err))
+                                .ok()
+                        })
                         // Ignore directories
                         .filter(|entry| entry.file_type().is_file())
                         // Get metadata
                         .filter_map(|entry| {
                             entry
                                 .metadata()
-                                .map_err(|err| error!("{}", err))
+                                .map_err(|err| logging::error_chain(&err))
                                 .ok()
                                 .map(|meta| (entry, meta))
                         })
@@ -188,7 +192,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                             hash = match calculate_crc32(&path) {
                                 Ok(crc) => Some(crc),
                                 Err(e) => {
-                                    error!("Error calculating CRC32: {}", e);
+                                    logging::error_chain_with_prefix("Error calculating CRC32", &e);
                                     None
                                 }
                             };
@@ -200,7 +204,10 @@ fn main() -> Result<(), Box<dyn Error>> {
                                     hash = match calculate_crc32(&path) {
                                         Ok(crc) => Some(crc),
                                         Err(e) => {
-                                            error!("Error calculating CRC32: {}", e);
+                                            logging::error_chain_with_prefix(
+                                                "Error calculating CRC32",
+                                                &e,
+                                            );
                                             None
                                         }
                                     };
@@ -218,14 +225,14 @@ fn main() -> Result<(), Box<dyn Error>> {
                 SearchEngineType::FileData => {
                     let x = FileData::new(output);
                     if let Err(e) = x.init_db(files) {
-                        error!("{}", e);
+                        logging::error_chain(e.as_ref());
                         std::process::exit(1);
                     }
                 }
                 SearchEngineType::Postgresql => {
                     let x = Postgresql::new(output);
                     if let Err(e) = x.init_db(files) {
-                        error!("{}", e);
+                        logging::error_chain(e.as_ref());
                         std::process::exit(1);
                     }
                 }
