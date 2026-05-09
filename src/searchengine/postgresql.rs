@@ -1,11 +1,25 @@
-use std::{error::Error, path::PathBuf};
+use std::{error::Error, path::PathBuf, str::FromStr};
 
 use crate::searchengine::SearchEngineA;
 use crate::TorrentFile;
 use log::{debug, info};
-use postgres::{Client, NoTls};
+use native_tls::TlsConnector;
+use postgres::config::SslMode;
+use postgres::{Client, Config, NoTls};
+use postgres_native_tls::MakeTlsConnector;
 
 use super::SearchEngine;
+
+fn connect_postgres(url: &str) -> Result<Client, Box<dyn Error>> {
+    let config = Config::from_str(url)?;
+    match config.get_ssl_mode() {
+        SslMode::Disable => Ok(config.connect(NoTls)?),
+        _ => {
+            let tls = TlsConnector::new()?;
+            Ok(config.connect(MakeTlsConnector::new(tls))?)
+        }
+    }
+}
 
 pub struct Postgresql {
     // TODO: использовать специальный тип для url
@@ -18,7 +32,7 @@ impl SearchEngineA for Postgresql {
         files: impl Iterator<Item = (PathBuf, u64, Option<u32>)>,
     ) -> Result<(), Box<dyn Error>> {
         info!("Connect to postgresql");
-        let mut client = Client::connect(&self.postgresql_url, NoTls)?;
+        let mut client = connect_postgres(&self.postgresql_url)?;
 
         info!("Create table public.file_info");
         // https://kotiri.com/2018/01/31/postgresql-diesel-rust-types.html
@@ -88,7 +102,7 @@ impl SearchEngine for Postgresql {
 
         debug!("Connect to postgresql");
         // TODO: убрать unwrap, сделать нормальный возврат ошибок
-        let mut client = Client::connect(&self.postgresql_url, NoTls).unwrap();
+        let mut client = connect_postgres(&self.postgresql_url).unwrap();
 
         debug!("Get paths from postgresql");
         // TODO: i64 - не знаю верно или нет
