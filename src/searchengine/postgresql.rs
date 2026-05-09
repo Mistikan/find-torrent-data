@@ -73,6 +73,7 @@ impl SearchEngineA for Postgresql {
                 Some(h) => Some(h as i64),
                 None => None,
             };
+            // TODO: я думаю, что несколько штук за раз было бы быстрее - batch, вроде, называется
             client.execute(
                 "INSERT INTO public.file_info (path, size, hash) VALUES ($1, $2, $3)",
                 // TODO: не знаю насколько это законно приводить к i64
