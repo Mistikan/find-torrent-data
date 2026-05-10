@@ -516,7 +516,25 @@ fn read_torrent_file<P>(
 where
     P: AsRef<Path>,
 {
-    let torrent = Torrent::read_from_file(torrent_path)?;
+    let mut bytes = Vec::new();
+    File::open(torrent_path.as_ref())?.read_to_end(&mut bytes)?;
+
+    // `lava_torrent` rejects dictionaries whose keys are not in strict lexicographic byte order
+    // (BEP-3 canonical encoding). Many real .torrent files use a different key order; they are still
+    // valid. Deserialize with serde_bencode (no order check) and re-encode — serde_bencode sorts
+    // keys when writing maps, so lava_torrent can parse the result.
+    let torrent = match Torrent::read_from_bytes(&bytes) {
+        Ok(t) => t,
+        Err(e) => {
+            let value: serde_bencode::value::Value = serde_bencode::from_bytes(&bytes)
+                .map_err(|e2| format!("{e}; tolerant bdecode: {e2}"))?;
+            let normalized =
+                serde_bencode::to_bytes(&value).map_err(|e2| format!("{e}; re-encode: {e2}"))?;
+            Torrent::read_from_bytes(&normalized).map_err(|e2| {
+                format!("{e}; parse after re-encode sorted keys: {e2}")
+            })?
+        }
+    };
 
     // По какой-то причине torrent.piece_length является знаковым типом.
     debug_assert!(torrent.piece_length >= 0);
