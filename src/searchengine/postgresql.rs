@@ -5,10 +5,44 @@ use crate::TorrentFile;
 use log::{debug, info};
 use native_tls::TlsConnector;
 use postgres::config::SslMode;
+use postgres::types::ToSql;
 use postgres::{Client, Config, NoTls};
 use postgres_native_tls::MakeTlsConnector;
 
 use super::SearchEngine;
+
+/// Rows per `INSERT`; fewer round-trips than one statement per file (PostgreSQL allows up to
+/// 65535 parameters per statement; 3 columns → stay well under that limit).
+const FILE_INFO_INSERT_BATCH: usize = 1000;
+
+fn flush_file_info_batch(
+    client: &mut Client,
+    batch: &mut Vec<(String, i64, Option<i64>)>,
+) -> Result<(), Box<dyn Error>> {
+    if batch.is_empty() {
+        return Ok(());
+    }
+    let n = batch.len();
+    let mut query = String::with_capacity(64 + n * 24);
+    query.push_str("INSERT INTO public.file_info (path, size, hash) VALUES ");
+    for i in 0..n {
+        if i > 0 {
+            query.push_str(", ");
+        }
+        let p = i * 3 + 1;
+        use std::fmt::Write as _;
+        write!(&mut query, "(${}, ${}, ${})", p, p + 1, p + 2).expect("string write");
+    }
+    let mut params: Vec<&(dyn ToSql + Sync)> = Vec::with_capacity(n * 3);
+    for (path, size, hash) in batch.iter() {
+        params.push(path);
+        params.push(size);
+        params.push(hash);
+    }
+    client.execute(&query, &params)?;
+    batch.clear();
+    Ok(())
+}
 
 fn connect_postgres(url: &str) -> Result<Client, Box<dyn Error>> {
     let config = Config::from_str(url)?;
@@ -68,21 +102,22 @@ impl SearchEngineA for Postgresql {
         ")?;
 
         info!("Insert data");
+        let mut batch: Vec<(String, i64, Option<i64>)> = Vec::with_capacity(FILE_INFO_INSERT_BATCH);
         for (i, (path, size, hash)) in files.enumerate() {
-            let hash = match hash {
-                Some(h) => Some(h as i64),
-                None => None,
-            };
-            // TODO: я думаю, что несколько штук за раз было бы быстрее - batch, вроде, называется
-            client.execute(
-                "INSERT INTO public.file_info (path, size, hash) VALUES ($1, $2, $3)",
-                // TODO: не знаю насколько это законно приводить к i64
-                &[&path.to_str(), &(size as i64), &(hash)],
-            )?;
+            let path = path
+                .to_str()
+                .ok_or_else(|| format!("path is not valid UTF-8: {:?}", path))?
+                .to_string();
+            let hash = hash.map(|h| h as i64);
+            batch.push((path, size as i64, hash));
+            if batch.len() >= FILE_INFO_INSERT_BATCH {
+                flush_file_info_batch(&mut client, &mut batch)?;
+            }
             if i % 10 == 0 {
                 info!("Insert files: {}", i);
             }
         }
+        flush_file_info_batch(&mut client, &mut batch)?;
 
         Ok(())
     }
