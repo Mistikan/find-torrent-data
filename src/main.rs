@@ -359,6 +359,7 @@ impl GroupBlockMultiPiece {
         // Seek to block
         file.seek(SeekFrom::Start(self.file_offset))?;
 
+        // TODO: здесь в теории можно блоки обрабатывать параллельно - в идеале это приведёт к ускорению
         for piece in self.pieces.iter() {
             // Hash single block
             let mut state = Sha1::new();
