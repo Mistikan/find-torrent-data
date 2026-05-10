@@ -93,7 +93,7 @@ impl SearchEngineA for Postgresql {
             AS $function$
             BEGIN
                 RETURN QUERY
-                SELECT DISTINCT on (f.hash) *
+                SELECT DISTINCT on (f.hash) f.id, f.path, f.size, f.hash
                 FROM public.file_info f
                 WHERE f.size = p_size AND f.path LIKE '%' || p_extension
                 order by f.hash, f.id;
